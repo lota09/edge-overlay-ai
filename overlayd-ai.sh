@@ -15,8 +15,12 @@ set -e
 echo "Initiating Overlayd-AI Framework Installation..."
 echo "Note: Setup might take up to 30 minutes depending on your phone's processor and internet speed."
 echo "Securing critical storage permissions (Please accept the popup if it appears)..."
-termux-setup-storage
-sleep 2
+if [ ! -d "$HOME/storage" ]; then
+    termux-setup-storage
+    sleep 2
+else
+    echo "Notice: Storage permissions already provisioned. Skipping step."
+fi
 
 echo "Running system diagnostics..."
 TOTAL_RAM=$(free -m | awk '/^Mem:/{print $2}')
@@ -69,51 +73,80 @@ fi
 # ==========================================
 # 3. Configuration Prompts
 # ==========================================
+# ==========================================
+# 3. Intelligent Model Configuration
+# ==========================================
 echo ""
-echo "Select Target Inference Model:"
-echo "1) Qwen2-VL-2B (Target: Vision-capable. Recommended for <8GB Memory)"
-echo "2) Llama-3.2-1B (Target: Lightweight text processing) [GATED]"
-echo "3) Gemma-2-2B-IT(Target: High-end reasoning) [GATED]"
-read -p "Select corresponding index (1/2/3): " MODEL_INDEX
+EXISTING_MODELS=$(ls $HOME/llama.cpp/models/*.gguf 2>/dev/null | head -n 1)
 
-case "$MODEL_INDEX" in
-    1)
-        PRIMARY_URL="https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/main/Qwen2-VL-2B-Instruct-Q4_K_M.gguf"
-        PRIMARY_FILE="qwen2-vl-2b-q4.gguf"
-        VISION_URL="https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/main/mmproj-Qwen2-VL-2B-Instruct-f16.gguf"
-        VISION_FILE="qwen2-vl-mmproj.gguf"
-        ;;
-    2)
-        PRIMARY_URL="https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
-        PRIMARY_FILE="llama-3.2-1b-q4.gguf"
-        VISION_URL=""
-        VISION_FILE=""
-        ;;
-    3)
-        PRIMARY_URL="https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"
-        PRIMARY_FILE="gemma-2-2b-it-q4.gguf"
-        VISION_URL=""
-        VISION_FILE=""
-        ;;
-    *)
-        echo "Error: Invalid model index selected. Terminating sequence."
-        exit 1
-        ;;
-esac
-
-echo ""
-echo "If you selected Llama or Gemma, they are 'gated' models. You must "
-echo "have accepted their terms on HuggingFace, and provide an Access Token."
-echo "(If you selected Qwen, you can just press Enter to skip this)"
-read -p "Input HuggingFace Token (hf_...): " HF_TOKEN
-
-echo ""
-echo "The system requires a Telegram Bot Profile to establish the external command bridge."
-read -p "Input Telegram Bot Token: " TELEGRAM_TOKEN
-if [ -z "$TELEGRAM_TOKEN" ]; then
-    echo "Warning: No token provided. Linking internal fallback flag."
-    TELEGRAM_TOKEN="TOKEN_NOT_PROVIDED"
+if [ -f "$EXISTING_MODELS" ]; then
+    FOUND_NAME=$(basename "$EXISTING_MODELS")
+    echo "========================================================"
+    echo "🔍 EXISTING MODEL DETECTED: ${FOUND_NAME}"
+    echo "========================================================"
+    read -p "Do you want to use this existing model? (y/n): " USE_EXISTING
+    if [ "$USE_EXISTING" == "y" ]; then
+        PRIMARY_FILE="$FOUND_NAME"
+        PRIMARY_URL="local_skip"
+        MODEL_INDEX="4"
+        echo "Selected existing model. Skipping URL prompts."
+    fi
 fi
+
+if [ "$PRIMARY_URL" != "local_skip" ]; then
+    echo "Select Target Inference Model:"
+    echo "1) Qwen2-VL-2B (Target: Vision-capable. Recommended for <8GB Memory)"
+    echo "2) Llama-3.2-1B (Target: Lightweight text processing) [GATED]"
+    echo "3) Gemma-2-2B-IT(Target: High-end reasoning) [GATED]"
+    echo "4) Custom GGUF URL (Enter your own model link from HuggingFace)"
+    read -p "Select corresponding index (1/2/3/4): " MODEL_INDEX
+
+    case "$MODEL_INDEX" in
+        1)
+            PRIMARY_URL="https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/main/Qwen2-VL-2B-Instruct-Q4_K_M.gguf"
+            PRIMARY_FILE="qwen2-vl-2b-q4.gguf"
+            VISION_URL="https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/main/mmproj-Qwen2-VL-2B-Instruct-f16.gguf"
+            VISION_FILE="qwen2-vl-mmproj.gguf"
+            ;;
+        2)
+            PRIMARY_URL="https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+            PRIMARY_FILE="llama-3.2-1b-q4.gguf"
+            VISION_URL=""
+            VISION_FILE=""
+            ;;
+        3)
+            PRIMARY_URL="https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-UD-Q4_K_XL.gguf"
+            PRIMARY_FILE="gemma-4-E2B-it-UD-Q4_K_XL.gguf"
+            VISION_URL="https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/mmproj-BF16.gguf"
+            VISION_FILE="mmproj-BF16.gguf"
+            ;;
+        4)
+            read -p "Input Model GGUF URL (HuggingFace): " PRIMARY_URL
+            PRIMARY_URL=$(echo "$PRIMARY_URL" | sed 's/\/blob\//\/resolve\//')
+            read -p "Save as filename (e.g. custom_model.gguf): " PRIMARY_FILE
+            if [ -z "$PRIMARY_FILE" ]; then PRIMARY_FILE="custom_model.gguf"; fi
+            
+            read -p "Does this model require a Vision (mmproj) module? (y/n): " IS_VISION
+            if [ "$IS_VISION" == "y" ]; then
+                read -p "Input Vision mmproj URL: " VISION_URL
+                VISION_URL=$(echo "$VISION_URL" | sed 's/\/blob\//\/resolve\//')
+                read -p "Save vision file as (e.g. custom_mmproj.gguf): " VISION_FILE
+            else
+                VISION_URL=""
+                VISION_FILE=""
+            fi
+            ;;
+        *)
+            echo "Error: Invalid model index selected. Terminating sequence."
+            exit 1
+            ;;
+    esac
+fi
+
+echo ""
+echo "Note: Officially 'gated' models (Llama/Gemma) require a HuggingFace Access Token."
+echo "If you selected Qwen or a public community model (Option 4), you can just press Enter to skip."
+read -p "Input HuggingFace Token (hf_...): " HF_TOKEN
 
 # ==========================================
 # 4. Environment Preparation
@@ -135,169 +168,128 @@ fi
 # ==========================================
 # 6. Model Procurement & Authentication
 # ==========================================
-echo "Downloading target inference weights..."
-mkdir -p "$HOME/llama.cpp/models"
-cd "$HOME/llama.cpp/models"
+if [ "$PRIMARY_URL" != "local_skip" ]; then
+    echo "Downloading target inference weights..."
+    mkdir -p "$HOME/llama.cpp/models"
+    cd "$HOME/llama.cpp/models"
 
-# Temporarily disable exit-on-error so we can catch wget 401s gracefully
-set +e
-
-echo "Validating payload permissions and downloading architecture..."
-if [ -n "$HF_TOKEN" ] && [ "$HF_TOKEN" != "TOKEN_NOT_PROVIDED" ]; then
-    wget --header="Authorization: Bearer $HF_TOKEN" -c "$PRIMARY_URL" -O "$PRIMARY_FILE"
-    WGET_STATUS=$?
-else
-    wget -c "$PRIMARY_URL" -O "$PRIMARY_FILE"
-    WGET_STATUS=$?
-fi
-
-if [ $WGET_STATUS -ne 0 ]; then
-    echo ""
-    echo "========================================================"
-    echo "❌ CRITICAL ERROR: Model download failed! (HTTP 401/403/404)"
-    echo "========================================================"
-    echo "You most likely provided an invalid HuggingFace token,"
-    echo "or you have not 'Accepted the Terms' on the repository page."
-    echo "Terminating script early to save compilation time."
-    echo "Please fetch a valid token and try again."
-    echo "========================================================"
-    exit 1
-fi
-
-if [ -n "$VISION_URL" ]; then
-    echo "Downloading optical projector sub-module..."
+    # Temporarily disable exit-on-error so we can catch wget 401s gracefully
+    set +e
     if [ -n "$HF_TOKEN" ] && [ "$HF_TOKEN" != "TOKEN_NOT_PROVIDED" ]; then
-        wget --header="Authorization: Bearer $HF_TOKEN" -c "$VISION_URL" -O "$VISION_FILE"
+        wget --header="Authorization: Bearer $HF_TOKEN" -c "$PRIMARY_URL" -O "$PRIMARY_FILE"
+        WGET_STATUS=$?
     else
-        wget -c "$VISION_URL" -O "$VISION_FILE"
+        wget -c "$PRIMARY_URL" -O "$PRIMARY_FILE"
+        WGET_STATUS=$?
     fi
+
+    if [ $WGET_STATUS -ne 0 ]; then
+        echo "❌ ERROR: Model download failed. Check token/URL."
+        exit 1
+    fi
+
+    if [ -n "$VISION_URL" ]; then
+        echo "Downloading optical projector sub-module..."
+        if [ -n "$HF_TOKEN" ] && [ "$HF_TOKEN" != "TOKEN_NOT_PROVIDED" ]; then
+            wget --header="Authorization: Bearer $HF_TOKEN" -c "$VISION_URL" -O "$VISION_FILE"
+        else
+            wget -c "$VISION_URL" -O "$VISION_FILE"
+        fi
+    fi
+    set -e
+else
+    echo "Notice: Using existing model file. Skipping download step."
 fi
 
-# Re-enable strict error catching
-set -e
+# ==========================================
+# 4-7. System Preparation & Engine Compilation (IRONCLAD GUARD)
+# ==========================================
+if [ ! -f "$HOME/llama.cpp/build/bin/llama-server" ]; then
+    echo "Notice: Valid engine binary not detected. Initiating one-time system preparation and build..."
+    
+    # 4. Environment Preparation
+    echo "Updating system packages..."
+    pkg update -y
+    pkg install clang cmake nodejs python wget git libandroid-spawn make -y
+
+    # 5. Core Engine Procurement
+    echo "Cloning Llama.cpp engine repository..."
+    cd $HOME
+    if [ ! -d "llama.cpp" ]; then
+        git clone https://github.com/ggerganov/llama.cpp
+    fi
+
+    # 7. Compilation Process
+    echo "Installing build-specific dependencies..."
+    pkg install libexpat -y
+    cd ~/llama.cpp
+    echo "Starting compilation of llama-server..."
+    mkdir -p build
+    export LDFLAGS="-landroid-spawn"
+    cmake -B build -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF
+    cmake --build build --config Release --target llama-server
+else
+    echo "========================================================"
+    echo "✅ ENGINE DETECTED: llama-server is ready."
+    echo "Skipping all system updates and compilation steps for speed."
+    echo "========================================================"
+fi
 
 # ==========================================
-# 7. Engine Compilation (Intensive Load)
-# ==========================================
-echo "Compiling Llama.cpp inference engine natively..."
-echo "Notice: This requires heavy CPU cycles and may take several minutes."
-cd $HOME/llama.cpp
-
-rm -rf build/
-export LDFLAGS="-landroid-spawn"
-cmake -B build -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF
-cmake --build build --config Release --target llama-server
-
-# ==========================================
-# 8. OpenClaw Linking
+# 8. OpenClaw Procurement (Reliable Binary Method)
 # ==========================================
 echo "Installing OpenClaw Vision Processor framework..."
-wget -q "https://github.com/nethacksalot/OpenClaw/releases/download/latest/openclaw-linux-${ARCH}" -O "$PREFIX/bin/openclaw" 2>/dev/null || echo "Notice: Standard OpenClaw binary unavailable for this architecture."
-chmod +x "$PREFIX/bin/openclaw" 2>/dev/null || true
-
-cat << EOF > $PREFIX/bin/openclaw-local
-#!/data/data/com.termux/files/usr/bin/bash
-export OPENAI_BASE_URL="http://127.0.0.1:8080/v1"
-export OPENAI_API_KEY="local-bypass"
-export OPENAI_MODEL="local-model"
-
-echo "Initializing OpenClaw Framework mapped to local inference backbone..."
-openclaw
-EOF
-chmod +x $PREFIX/bin/openclaw-local
-
-# ==========================================
-# 9. Bridge Protocol Generation
-# ==========================================
-echo "Configuring Node.js interaction logic..."
-cd $HOME
-if [ ! -f "package.json" ]; then
-    npm init -y > /dev/null
+# Restoring original binary download logic to bypass npm platform errors
+if ! command -v openclaw &> /dev/null; then
+    wget -q "https://github.com/nethacksalot/OpenClaw/releases/download/latest/openclaw-linux-${ARCH}" -O "$PREFIX/bin/openclaw" 2>/dev/null || echo "Notice: Standard OpenClaw binary unavailable for this architecture."
+    chmod +x "$PREFIX/bin/openclaw" 2>/dev/null || true
+else
+    echo "Notice: OpenClaw already installed. Skipping npm step."
 fi
-npm install node-telegram-bot-api > /dev/null
 
-cat << 'EOF' > $HOME/telegram_bot.js
-const TelegramBot = require('node-telegram-bot-api');
-const { exec } = require('child_process');
+# Pre-creating Skill Directory
+mkdir -p $HOME/.openclaw/skills
 
-const token = process.env.TELEGRAM_TOKEN || 'OVERLAYD_INJECT_TOKEN';
-const bot = new TelegramBot(token, {polling: true});
+# ==========================================
+# 9. OpenClaw Skill: Android System Control (rish)
+# ==========================================
+echo "Injecting Android System Control skill into OpenClaw..."
+cat << 'EOF' > $HOME/.openclaw/skills/android_system.md
+# Android System Control
 
-bot.on('message', async (msg) => {
-  const chatId = msg.chat.id;
-  if (!msg.text || msg.text.startsWith('/')) return;
-  bot.sendMessage(chatId, "Processing input request.");
+This skill allows the AI to control Android system settings and perform actions using the rish shell bridge.
 
-  const rawPrompt = `System: You are an autonomous system administration agent. Output Android system commands (CMD:) or direct text replies (MSG:). Output must be concise and literal.
+## Tools
 
-User: query process status
-PhoneBot: MSG: Returning system parameters.
+### execute_android_command
+Executes a bash command on the Android system.
 
-User: open youtube
-PhoneBot: CMD: monkey -p com.google.android.youtube 1
+- command (string): The shell command to execute (e.g., 'svc wifi disable' or 'input keyevent 3').
 
-User: disable wireless networking
-PhoneBot: CMD: svc wifi disable
-
-User: invoke dark mode profiles
-PhoneBot: CMD: cmd uimode night yes
-
-User: return to primary home screen
-PhoneBot: CMD: input keyevent 3
-
-User: launch application background switcher
-PhoneBot: CMD: input keyevent 187
-
-User: capture optical state
-PhoneBot: CMD: screencap -p /sdcard/screenshot.png
-
-User: ${msg.text.trim()}
-PhoneBot:`;
-
-  try {
-    const response = await fetch("http://127.0.0.1:8080/v1/completions", {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            prompt: rawPrompt,
-            temperature: 0.1,
-            max_tokens: 300,
-            stop: ["\nUser:", "User:"]
-        })
-    });
-    
-    if (!response.ok) throw new Error("Inference failure.");
-    
-    const data = await response.json();
-    let reply = data.choices[0].text.trim();
-    
-    if (reply.startsWith('CMD:')) {
-        let command = reply.replace('CMD:', '').trim();
-        bot.sendMessage(chatId, "Executing localized system parameters.");
-        
-        const finalCmd = `bash /data/data/com.termux/files/usr/bin/rish -c "export PATH=/sbin:/system/sbin:/system/bin:/system/xbin; ${command.replace(/"/g, '\\"')}"`;
-        exec(finalCmd, (error) => {
-            if (error) {
-                if (error.code === 127 || error.message.includes("not found")) {
-                    bot.sendMessage(chatId, "Task failed. 'rish' executable not found. Ensure Shizuku is configured and exported to Termux.");
-                } else {
-                    bot.sendMessage(chatId, "Task execution failed. Verify Shizuku is actively running in the background.");
-                }
-            } else {
-                bot.sendMessage(chatId, "Task executed successfully.");
-            }
-        });
-    } else {
-        let outMsg = reply.replace('MSG:', '').trim();
-        bot.sendMessage(chatId, outMsg);
-    }
-  } catch (e) {
-    bot.sendMessage(chatId, "Service offline. Backend linkage terminated.");
-  }
-});
-console.log("Overlayd-AI Bridge running. Awaiting input array.");
+## Execution
+Run: `bash /data/data/com.termux/files/usr/bin/rish -c "<command>"`
 EOF
 
-sed -i "s/OVERLAYD_INJECT_TOKEN/$TELEGRAM_TOKEN/g" $HOME/telegram_bot.js
+# Pre-seeding OpenClaw configuration for local LLM
+cat << EOF > $HOME/.openclaw/config.yml
+gateway:
+  host: 0.0.0.0
+  port: 3000
+  enabled: true
+
+providers:
+  local-llm:
+    type: openai
+    baseUrl: http://127.0.0.1:8080/v1
+    apiKey: local-bypass
+
+agents:
+  phone-assistant:
+    provider: local-llm
+    model: local-model
+    skills:
+      - android_system
+EOF
 
 # ==========================================
 # 10. Start-Sequence Architecting
@@ -308,23 +300,34 @@ cat << EOF > $HOME/start-overlayd.sh
 echo "Initiating Overlayd-AI Systems..."
 cd ~/llama.cpp
 
-if [ "$MODEL_INDEX" == "1" ]; then
-    ./build/bin/llama-server -m models/${PRIMARY_FILE} --mmproj models/${VISION_FILE} -t 4 -c 4096 --port 8080 > ~/overlayd_server.log 2>&1 &
+# Start LLM Engine with external access (0.0.0.0)
+# Intelligent Vision Detection: Added for Gemma-4/Qwen-VL compatibility
+if [ -n "$VISION_FILE" ] && [ -f "models/${VISION_FILE}" ]; then
+    echo "========================================================"
+    echo "🎥 MULTIMODAL MODE ACTIVATED: Loading ${VISION_FILE}"
+    echo "========================================================"
+    ./build/bin/llama-server --host 0.0.0.0 -m models/${PRIMARY_FILE} --mmproj models/${VISION_FILE} -t 4 -c 4096 --port 8080 > ~/overlayd_server.log 2>&1 &
 else
-    ./build/bin/llama-server -m models/${PRIMARY_FILE} -t 4 -c 2048 --port 8080 > ~/overlayd_server.log 2>&1 &
+    echo "========================================================"
+    echo "📝 TEXT-ONLY MODE: No vision module detected."
+    echo "========================================================"
+    ./build/bin/llama-server --host 0.0.0.0 -m models/${PRIMARY_FILE} -t 4 -c 2048 --port 8080 > ~/overlayd_server.log 2>&1 &
 fi
 
 OVERLAYD_PID=\$!
 
-echo "Allocating inference model into system memory..."
+echo "Allocating inference model into system memory (15s)..."
 sleep 15
 
-echo "Starting Telegram listener port..."
+echo "Starting OpenClaw Gateway..."
 cd ~
-node telegram_bot.js
+openclaw start > ~/openclaw.log 2>&1 &
+CLAW_PID=\$!
 
-echo "Termination requested. Unloading inference model."
-kill \$OVERLAYD_PID
+echo "System active. Access Web UI at http://127.0.0.1:3000 (Local) or http://PHONE_IP:3000 (Network)"
+echo "To configure Discord/others, run: openclaw onboard"
+
+wait \$OVERLAYD_PID \$CLAW_PID
 EOF
 chmod +x $HOME/start-overlayd.sh
 
