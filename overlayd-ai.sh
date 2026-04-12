@@ -236,15 +236,35 @@ else
 fi
 
 # ==========================================
-# 8. OpenClaw Procurement (Reliable Binary Method)
+# 8. OpenClaw Procurement (Verified Hub Method)
 # ==========================================
 echo "Installing OpenClaw Vision Processor framework..."
-# Restoring original binary download logic to bypass npm platform errors
-if ! command -v openclaw &> /dev/null; then
-    wget -q "https://github.com/nethacksalot/OpenClaw/releases/download/latest/openclaw-linux-${ARCH}" -O "$PREFIX/bin/openclaw" 2>/dev/null || echo "Notice: Standard OpenClaw binary unavailable for this architecture."
-    chmod +x "$PREFIX/bin/openclaw" 2>/dev/null || true
+
+# Apply Network Normalization (From Development Plan)
+export NODE_OPTIONS=--dns-result-order=ipv4first
+
+if command -v openclaw &>/dev/null; then
+    echo "✅ Notice: OpenClaw already installed. Skipping installation."
 else
-    echo "Notice: OpenClaw already installed. Skipping npm step."
+    echo "Installing Android-optimized OpenClaw distribution (AidanPark/Codex)..."
+    # Using the verified hub installer with non-interactive pipeline
+    yes | bash -c "$(curl -sSL https://myopenclawhub.com/install)" 2>/dev/null
+    
+    # Final verification guard
+    if ! command -v openclaw &>/dev/null; then
+        echo "⚠️  Primary installer failed. Attempting fallback Node package..."
+        npm install -g @mmmbuto/codex-cli-termux --force 2>/dev/null
+    fi
+fi
+
+# Success Verification (Self-Diagnostic)
+if command -v openclaw &>/dev/null; then
+    echo "========================================================"
+    echo "✅ OpenClaw successfully verified: $(openclaw --version 2>/dev/null || echo 'Ready')"
+    echo "========================================================"
+else
+    echo "❌ ERROR: OpenClaw installation failed. Please check your internet connection."
+    exit 1
 fi
 
 # Pre-creating Skill Directory
@@ -332,10 +352,13 @@ EOF
 chmod +x $HOME/start-overlayd.sh
 
 echo ""
+# Final validation of environment variables
+source ~/.bashrc 2>/dev/null
+
 echo "Installation structure successfully resolved."
 echo "Execute the system sequence via the following command:"
 echo "bash ~/start-overlayd.sh"
-echo "Note: The OpenClaw execution environment can be triggered manually via 'openclaw-local'."
+echo "Note: The OpenClaw execution environment can be triggered manually via 'openclaw onboard'."
 echo ""
 echo "System deployment finished."
 echo "If you found this setup useful, please consider subscribing to 'orailnoor' on YouTube!"
