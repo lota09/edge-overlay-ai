@@ -245,6 +245,7 @@ fi
 if [ "$PRIMARY_URL" != "local_skip" ]; then
 
     echo "Downloading target inference weights..."
+    mkdir -p "$HOME/llama.cpp/models"
     cd "$HOME/llama.cpp/models"
 
     if [ -n "$HF_TOKEN" ] && [ "$HF_TOKEN" != "TOKEN_NOT_PROVIDED" ]; then
@@ -302,11 +303,29 @@ if [ "$BUILD_NEEDED" = true ]; then
     # Install build-specific dependencies
     pkg install -y libexpat </dev/null 2>&1
 
+    # -------------------------------------------------------
+    # Helper: CPU-only llama-server build.
+    # Called by any failure path and the initial CPU (n) path.
+    # -------------------------------------------------------
+    _build_cpu_llama() {
+        cd ~/llama.cpp
+        rm -rf build
+        mkdir -p build
+        echo "Starting CPU-only compilation (this will take a while)..."
+        cmake -B build -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF
+        if cmake --build build --config Release --target llama-server; then
+            echo "✅ CPU llama-server compilation successful."
+        else
+            echo "❌ ERROR: CPU build failed. Terminating."
+            exit 1
+        fi
+    }
+
+    export LDFLAGS="-landroid-spawn"
+    GPU_FAILED=false  # Tracks whether a GPU path was attempted and failed
+
+    # === GPU Path 1: Build glslc (GLSL shader compiler) ===
     if [ "$USE_GPU" = true ]; then
-        # -------------------------------------------------------
-        # Build glslc (GLSL shader compiler) from shaderc source.
-        # Required by llama.cpp Vulkan; NOT available in Termux repos.
-        # -------------------------------------------------------
         if ! command -v glslc > /dev/null 2>&1; then
             echo ""
             echo "========================================================"
@@ -314,7 +333,6 @@ if [ "$BUILD_NEEDED" = true ]; then
             echo "   This is a one-time build (~15-30 min). Please wait."
             echo "========================================================"
 
-            GLSLC_BUILD_OK=false
             cd $HOME
             if [ ! -d "shaderc" ]; then
                 git clone --recursive https://github.com/google/shaderc
@@ -328,22 +346,21 @@ if [ "$BUILD_NEEDED" = true ]; then
             if ninja glslc_exe; then
                 cp ~/shaderc/build/glslc/glslc $PREFIX/bin/glslc
                 echo "✅ glslc installed: $(glslc --version)"
-                GLSLC_BUILD_OK=true
             else
-                echo "❌ glslc build failed. Falling back to CPU-only build."
+                echo "❌ glslc build failed."
+                GPU_FAILED=true
                 USE_GPU=false
             fi
         else
             echo "✅ glslc already available: $(glslc --version)"
-            GLSLC_BUILD_OK=true
         fi
     fi
 
-    cd ~/llama.cpp
-    mkdir -p build
-    export LDFLAGS="-landroid-spawn"
-
+    # === GPU Path 2: Vulkan cmake ===
+    # (Separate block — correctly reads USE_GPU even if Path 1 changed it)
     if [ "$USE_GPU" = true ]; then
+        cd ~/llama.cpp
+        mkdir -p build
         echo "Starting GPU-accelerated compilation (Vulkan + Turnip)..."
         cmake -B build \
           -DLLAMA_BUILD_SERVER=ON \
@@ -356,36 +373,36 @@ if [ "$BUILD_NEEDED" = true ]; then
             echo ""
             echo "❌ Vulkan GPU build failed."
             echo "This may be caused by missing driver headers or an incompatible Vulkan ICD."
-            read -p "Fall back to CPU-only build and continue? (y/n): " FALLBACK_CHOICE
-            if [ "$FALLBACK_CHOICE" == "y" ]; then
-                echo "Clearing failed GPU build..."
-                rm -rf build
-                mkdir -p build
-                USE_GPU=false
-                echo "Starting CPU-only compilation..."
-                cmake -B build -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF
-                if cmake --build build --config Release --target llama-server; then
-                    echo "✅ CPU llama-server compilation successful."
-                else
-                    echo "❌ ERROR: CPU build also failed. Terminating."
-                    exit 1
-                fi
+            rm -rf build   # clear failed GPU artifacts
+            GPU_FAILED=true
+            USE_GPU=false
+        fi
+    fi
+
+    # === CPU Path ===
+    # (a) GPU=n from start → GPU_FAILED=false → build directly
+    # (b) glslc failed     → GPU_FAILED=true  → ask user
+    # (c) Vulkan failed    → GPU_FAILED=true  → ask user
+    if [ "$USE_GPU" = false ]; then
+        if [ "$GPU_FAILED" = true ]; then
+            echo ""
+            echo "========================================================"
+            echo "⚠️  GPU acceleration failed. Continue with CPU-only inference?"
+            echo "   CPU inference is slower but fully stable."
+            echo "========================================================"
+            read -p "Continue with CPU-only build? (y/n): " COMPROMISE_CHOICE
+            if [ "$COMPROMISE_CHOICE" == "y" ]; then
+                _build_cpu_llama
             else
                 echo "Terminating as requested."
                 exit 1
             fi
-        fi
-    else
-        echo "Starting CPU-only compilation (this will take a while)..."
-        cmake -B build -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF
-        if cmake --build build --config Release --target llama-server; then
-            echo "✅ llama-server compilation successful."
         else
-            echo "❌ ERROR: Compilation failed. Check the output above for details."
-            exit 1
+            _build_cpu_llama
         fi
     fi
 fi
+
 
 # ==========================================
 # 6. OpenClaw Procurement
