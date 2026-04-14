@@ -7,7 +7,9 @@
 #              Telegram interface and the OpenClaw execution environment.
 # =========================================================================
 
-set -e
+# NOTE: set -e is intentionally NOT used.
+# pkg and other Termux commands may return non-zero on minor warnings.
+# Errors are handled explicitly where they matter.
 
 # ==========================================
 # 1. Environment & Hardware Diagnostics
@@ -56,7 +58,7 @@ if [ ! -f "$PREFIX/bin/rish" ]; then
         echo "4. Export the files strictly into that 'Shizuku' folder."
         echo ""
         read -p "Press [Enter] ONLY after you have successfully exported the files..."
-        
+
         if ls /sdcard/Shizuku/rish* 1> /dev/null 2>&1; then
             cp /sdcard/Shizuku/rish* $PREFIX/bin/
             chmod +x $PREFIX/bin/rish
@@ -71,8 +73,86 @@ if [ ! -f "$PREFIX/bin/rish" ]; then
 fi
 
 # ==========================================
-# 3. Configuration Prompts
+# Bootstrap: Essential Tool Check
 # ==========================================
+echo ""
+echo "Checking essential tools..."
+MISSING_TOOLS=""
+for cmd in clang cmake node python wget git make; do
+    if ! command -v "$cmd" > /dev/null 2>&1; then
+        MISSING_TOOLS="$MISSING_TOOLS $cmd"
+    fi
+done
+
+if [ -n "$MISSING_TOOLS" ]; then
+    echo "⚠️  Missing tools:$MISSING_TOOLS — Installing all required packages..."
+    pkg update -y -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef" </dev/null 2>&1 || {
+        echo "⚠️  pkg update had warnings (continuing...)"
+    }
+    pkg install -y clang cmake nodejs python wget git libandroid-spawn make </dev/null 2>&1 || {
+        echo "⚠️  Some packages may have failed to install (continuing...)"
+    }
+
+else
+    echo "✅ All essential tools present."
+fi
+
+# ==========================================
+# GPU Acceleration Selection
+# ==========================================
+USE_GPU=false
+echo ""
+echo "========================================================"
+echo "🎮 GPU Acceleration (Vulkan / Adreno)"
+echo "========================================================"
+echo "Offloads model layers to the GPU for faster inference."
+read -p "Enable Vulkan GPU acceleration? (y/n): " GPU_CHOICE
+if [ "$GPU_CHOICE" == "y" ]; then
+    USE_GPU=true
+    echo "✅ GPU acceleration enabled."
+else
+    echo "CPU-only mode selected."
+fi
+
+# ==========================================
+# GPU Package Setup (runs only if GPU selected)
+# ==========================================
+if [ "$USE_GPU" = true ]; then
+    echo ""
+    echo "========================================================"
+    echo "📦 Installing GPU Acceleration packages..."
+    echo "========================================================"
+
+    # Add tur-repo (provides mesa-zink, virglrenderer-mesa-zink)
+    if ! pkg list-installed 2>/dev/null | grep -q "^tur-repo"; then
+        echo "Adding tur-repo..."
+        pkg install -y tur-repo </dev/null 2>&1 || true
+    fi
+
+    # Add x11-repo (provides Termux:X11 related packages)
+    if ! pkg list-installed 2>/dev/null | grep -q "^x11-repo"; then
+        echo "Adding x11-repo..."
+        pkg install -y x11-repo </dev/null 2>&1 || true
+    fi
+
+    pkg update -y -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef" </dev/null 2>&1 || true
+
+    # virgl renderer + Mesa Zink (OpenGL over Vulkan bridge)
+    pkg install -y mesa-zink virglrenderer-mesa-zink vulkan-loader-android virglrenderer-android vulkan-headers vulkan-tools </dev/null 2>&1 || {
+        echo "⚠️  Some GPU packages may have failed (continuing...)"
+    }
+
+    # Turnip: open-source Vulkan driver for Adreno 6xx/7xx
+    apt install -y mesa-vulkan-icd-freedreno-dri3 </dev/null 2>&1 || {
+        echo "⚠️  Turnip ICD install had issues (continuing...)"
+    }
+
+    # ninja (needed to build shaderc)
+    pkg install -y ninja </dev/null 2>&1 || true
+
+    echo "✅ GPU packages installed."
+fi
+
 # ==========================================
 # 3. Intelligent Model Configuration
 # ==========================================
@@ -95,42 +175,32 @@ fi
 
 if [ "$PRIMARY_URL" != "local_skip" ]; then
     echo "Select Target Inference Model:"
-    echo "1) Qwen2-VL-2B (Target: Vision-capable. Recommended for <8GB Memory)"
-    echo "2) Llama-3.2-1B (Target: Lightweight text processing) [GATED]"
-    echo "3) Gemma-2-2B-IT(Target: High-end reasoning) [GATED]"
-    echo "4) Custom GGUF URL (Enter your own model link from HuggingFace)"
-    read -p "Select corresponding index (1/2/3/4): " MODEL_INDEX
+    echo "1) Gemma-4-E2B-IT (unsloth UD_Q4_K_XL, Size: 3.17 GB )"
+    echo "2) Gemma-4-E4B-IT (unsloth UD_Q4_K_XL, Size: 5.1 GB )"
+    echo "3) Custom GGUF URL (Enter your own model link from HuggingFace)"
+    read -p "Select corresponding index (1/2/3): " MODEL_INDEX
 
     case "$MODEL_INDEX" in
         1)
-            PRIMARY_URL="https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/main/Qwen2-VL-2B-Instruct-Q4_K_M.gguf"
-            PRIMARY_FILE="qwen2-vl-2b-q4.gguf"
-            VISION_URL="https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/main/mmproj-Qwen2-VL-2B-Instruct-f16.gguf"
-            VISION_FILE="qwen2-vl-mmproj.gguf"
-            ;;
-        2)
-            PRIMARY_URL="https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
-            PRIMARY_FILE="llama-3.2-1b-q4.gguf"
-            VISION_URL=""
-            VISION_FILE=""
-            ;;
-        3)
             PRIMARY_URL="https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-UD-Q4_K_XL.gguf"
             PRIMARY_FILE="gemma-4-E2B-it-UD-Q4_K_XL.gguf"
             VISION_URL="https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/mmproj-BF16.gguf"
             VISION_FILE="mmproj-BF16.gguf"
             ;;
-        4)
+        2)
+            PRIMARY_URL="https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/blob/main/gemma-4-E4B-it-UD-Q4_K_XL.gguf"
+            PRIMARY_FILE="gemma-4-E4B-it-UD-Q4_K_XL.gguf"
+            VISION_URL="https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/blob/main/mmproj-BF16.gguf"
+            VISION_FILE="mmproj-BF16.gguf"
+            ;;
+        3)
             read -p "Input Model GGUF URL (HuggingFace): " PRIMARY_URL
-            PRIMARY_URL=$(echo "$PRIMARY_URL" | sed 's/\/blob\//\/resolve\//')
-            read -p "Save as filename (e.g. custom_model.gguf): " PRIMARY_FILE
-            if [ -z "$PRIMARY_FILE" ]; then PRIMARY_FILE="custom_model.gguf"; fi
-            
+            read -p "Save as filename (leave blank to use original name from URL): " PRIMARY_FILE
+
             read -p "Does this model require a Vision (mmproj) module? (y/n): " IS_VISION
             if [ "$IS_VISION" == "y" ]; then
                 read -p "Input Vision mmproj URL: " VISION_URL
-                VISION_URL=$(echo "$VISION_URL" | sed 's/\/blob\//\/resolve\//')
-                read -p "Save vision file as (e.g. custom_mmproj.gguf): " VISION_FILE
+                read -p "Save vision file as (leave blank to use original name): " VISION_FILE
             else
                 VISION_URL=""
                 VISION_FILE=""
@@ -141,6 +211,20 @@ if [ "$PRIMARY_URL" != "local_skip" ]; then
             exit 1
             ;;
     esac
+
+    # Normalize all HuggingFace URLs: /blob/ → /resolve/ (applies to all models including presets)
+    PRIMARY_URL=$(echo "$PRIMARY_URL" | sed 's/\/blob\//\/resolve\//g')
+    [ -n "$VISION_URL" ] && VISION_URL=$(echo "$VISION_URL" | sed 's/\/blob\//\/resolve\//g')
+
+    # Derive filenames from URL if user left them blank
+    if [ -z "$PRIMARY_FILE" ]; then
+        PRIMARY_FILE=$(basename "$PRIMARY_URL" | cut -d'?' -f1)
+        echo "Note: Model will be saved as: ${PRIMARY_FILE}"
+    fi
+    if [ -n "$VISION_URL" ] && [ -z "$VISION_FILE" ]; then
+        VISION_FILE=$(basename "$VISION_URL" | cut -d'?' -f1)
+        echo "Note: Vision module will be saved as: ${VISION_FILE}"
+    fi
 fi
 
 echo ""
@@ -148,33 +232,21 @@ echo "Note: Officially 'gated' models (Llama/Gemma) require a HuggingFace Access
 echo "If you selected Qwen or a public community model (Option 4), you can just press Enter to skip."
 read -p "Input HuggingFace Token (hf_...): " HF_TOKEN
 
-# ==========================================
-# 4. Environment Preparation
-# ==========================================
-echo ""
-echo "Updating and downloading compilation dependencies..."
-pkg update -y
-pkg install clang cmake nodejs python wget git libandroid-spawn make -y
 
 # ==========================================
-# 5. Core Engine Procurement
+# 4. Engine Procurement & Model Metadata
 # ==========================================
-echo "Cloning Llama.cpp engine repository..."
-cd $HOME
-if [ ! -d "llama.cpp" ]; then
+if [ ! -d "$HOME/llama.cpp" ]; then
+    echo "Cloning Llama.cpp engine repository..."
+    cd "$HOME"
     git clone https://github.com/ggerganov/llama.cpp
 fi
 
-# ==========================================
-# 6. Model Procurement & Authentication
-# ==========================================
 if [ "$PRIMARY_URL" != "local_skip" ]; then
+
     echo "Downloading target inference weights..."
-    mkdir -p "$HOME/llama.cpp/models"
     cd "$HOME/llama.cpp/models"
 
-    # Temporarily disable exit-on-error so we can catch wget 401s gracefully
-    set +e
     if [ -n "$HF_TOKEN" ] && [ "$HF_TOKEN" != "TOKEN_NOT_PROVIDED" ]; then
         wget --header="Authorization: Bearer $HF_TOKEN" -c "$PRIMARY_URL" -O "$PRIMARY_FILE"
         WGET_STATUS=$?
@@ -196,142 +268,367 @@ if [ "$PRIMARY_URL" != "local_skip" ]; then
             wget -c "$VISION_URL" -O "$VISION_FILE"
         fi
     fi
-    set -e
 else
     echo "Notice: Using existing model file. Skipping download step."
 fi
 
 # ==========================================
-# 4-7. System Preparation & Engine Compilation (IRONCLAD GUARD)
+# 5. Engine Compilation (IRONCLAD GUARD)
 # ==========================================
-if [ ! -f "$HOME/llama.cpp/build/bin/llama-server" ]; then
-    echo "Notice: Valid engine binary not detected. Initiating one-time system preparation and build..."
-    
-    # 4. Environment Preparation
-    echo "Updating system packages..."
-    pkg update -y
-    pkg install clang cmake nodejs python wget git libandroid-spawn make -y
+BUILD_NEEDED=false
 
-    # 5. Core Engine Procurement
-    echo "Cloning Llama.cpp engine repository..."
-    cd $HOME
-    if [ ! -d "llama.cpp" ]; then
-        git clone https://github.com/ggerganov/llama.cpp
+if [ ! -f "$HOME/llama.cpp/build/bin/llama-server" ]; then
+    BUILD_NEEDED=true
+else
+    echo ""
+    echo "========================================================"
+    echo "✅ ENGINE DETECTED: llama-server binary already exists."
+    echo "========================================================"
+    echo "1) Skip  - Use existing binary (Recommended)"
+    echo "2) Rebuild - Delete existing build and recompile from source"
+    read -p "Select option (1/2): " REBUILD_CHOICE
+    if [ "$REBUILD_CHOICE" == "2" ]; then
+        echo "Removing existing build directory..."
+        rm -rf "$HOME/llama.cpp/build"
+        BUILD_NEEDED=true
+        echo "Build directory cleared. Proceeding with fresh compilation..."
+    else
+        echo "Skipping compilation. Using existing binary."
+    fi
+fi
+
+if [ "$BUILD_NEEDED" = true ]; then
+
+    # Install build-specific dependencies
+    pkg install -y libexpat </dev/null 2>&1
+
+    if [ "$USE_GPU" = true ]; then
+        # -------------------------------------------------------
+        # Build glslc (GLSL shader compiler) from shaderc source.
+        # Required by llama.cpp Vulkan; NOT available in Termux repos.
+        # -------------------------------------------------------
+        if ! command -v glslc > /dev/null 2>&1; then
+            echo ""
+            echo "========================================================"
+            echo "🔨 Building glslc (GLSL Shader Compiler)..."
+            echo "   This is a one-time build (~15-30 min). Please wait."
+            echo "========================================================"
+
+            GLSLC_BUILD_OK=false
+            cd $HOME
+            if [ ! -d "shaderc" ]; then
+                git clone --recursive https://github.com/google/shaderc
+            fi
+            cd shaderc
+            mkdir -p build
+            cd build
+            cmake .. -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DSHADERC_SKIP_TESTS=ON
+            if ninja glslc_exe; then
+                cp ~/shaderc/build/glslc/glslc $PREFIX/bin/glslc
+                echo "✅ glslc installed: $(glslc --version)"
+                GLSLC_BUILD_OK=true
+            else
+                echo "❌ glslc build failed. Falling back to CPU-only build."
+                USE_GPU=false
+            fi
+        else
+            echo "✅ glslc already available: $(glslc --version)"
+            GLSLC_BUILD_OK=true
+        fi
     fi
 
-    # 7. Compilation Process
-    echo "Installing build-specific dependencies..."
-    pkg install libexpat -y
     cd ~/llama.cpp
-    echo "Starting compilation of llama-server..."
     mkdir -p build
     export LDFLAGS="-landroid-spawn"
-    cmake -B build -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF
-    cmake --build build --config Release --target llama-server
-else
-    echo "========================================================"
-    echo "✅ ENGINE DETECTED: llama-server is ready."
-    echo "Skipping all system updates and compilation steps for speed."
-    echo "========================================================"
+
+    if [ "$USE_GPU" = true ]; then
+        echo "Starting GPU-accelerated compilation (Vulkan + Turnip)..."
+        cmake -B build \
+          -DLLAMA_BUILD_SERVER=ON \
+          -DLLAMA_BUILD_TESTS=OFF \
+          -DGGML_VULKAN=ON \
+          -DVulkan_GLSLC_EXECUTABLE="$PREFIX/bin/glslc"
+        if cmake --build build --config Release --target llama-server; then
+            echo "✅ GPU (Vulkan) llama-server compilation successful."
+        else
+            echo ""
+            echo "❌ Vulkan GPU build failed."
+            echo "This may be caused by missing driver headers or an incompatible Vulkan ICD."
+            read -p "Fall back to CPU-only build and continue? (y/n): " FALLBACK_CHOICE
+            if [ "$FALLBACK_CHOICE" == "y" ]; then
+                echo "Clearing failed GPU build..."
+                rm -rf build
+                mkdir -p build
+                USE_GPU=false
+                echo "Starting CPU-only compilation..."
+                cmake -B build -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF
+                if cmake --build build --config Release --target llama-server; then
+                    echo "✅ CPU llama-server compilation successful."
+                else
+                    echo "❌ ERROR: CPU build also failed. Terminating."
+                    exit 1
+                fi
+            else
+                echo "Terminating as requested."
+                exit 1
+            fi
+        fi
+    else
+        echo "Starting CPU-only compilation (this will take a while)..."
+        cmake -B build -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF
+        if cmake --build build --config Release --target llama-server; then
+            echo "✅ llama-server compilation successful."
+        else
+            echo "❌ ERROR: Compilation failed. Check the output above for details."
+            exit 1
+        fi
+    fi
 fi
 
 # ==========================================
-# 8. OpenClaw Procurement (Verified Hub Method)
+# 6. OpenClaw Procurement
 # ==========================================
 echo "Installing OpenClaw Vision Processor framework..."
 
-# Apply Network Normalization (From Development Plan)
-export NODE_OPTIONS=--dns-result-order=ipv4first
-
-if command -v openclaw &>/dev/null; then
+if command -v openclaw &>/dev/null || [ -d "$HOME/.openclaw/repo" ]; then
     echo "✅ Notice: OpenClaw already installed. Skipping installation."
 else
-    echo "Installing Android-optimized OpenClaw distribution (AidanPark/Codex)..."
-    # Using the verified hub installer with non-interactive pipeline
-    yes | bash -c "$(curl -sSL https://myopenclawhub.com/install)" 2>/dev/null
-    
-    # Final verification guard
-    if ! command -v openclaw &>/dev/null; then
-        echo "⚠️  Primary installer failed. Attempting fallback Node package..."
-        npm install -g @mmmbuto/codex-cli-termux --force 2>/dev/null
-    fi
+    echo "Installing OpenClaw..."
+    bash -c "$(curl -sSL https://myopenclawhub.com/install)" < /dev/tty && source ~/.bashrc 2>/dev/null
 fi
 
-# Success Verification (Self-Diagnostic)
+# Self-Diagnostic
 if command -v openclaw &>/dev/null; then
     echo "========================================================"
-    echo "✅ OpenClaw successfully verified: $(openclaw --version 2>/dev/null || echo 'Ready')"
+    echo "✅ OpenClaw successfully verified."
     echo "========================================================"
 else
-    echo "❌ ERROR: OpenClaw installation failed. Please check your internet connection."
+    echo "❌ ERROR: OpenClaw installation failed."
     exit 1
 fi
 
-# Pre-creating Skill Directory
-mkdir -p $HOME/.openclaw/skills
+# ==========================================
+# 7. openclaw-local Wrapper (Local LLM Bridge)
+# ==========================================
+echo "Creating openclaw-local inference bridge..."
+cat << 'EOF' > $PREFIX/bin/openclaw-local
+#!/data/data/com.termux/files/usr/bin/bash
+# openclaw-local: Wrapper that forces OpenClaw to use the local llama-server
+# instead of external cloud APIs.
+export OPENAI_BASE_URL="http://127.0.0.1:8080/v1"
+export OPENAI_API_KEY="local-bypass"
+export OPENAI_MODEL="local-model"
+
+echo "Initializing OpenClaw mapped to local inference backbone (127.0.0.1:8080)..."
+openclaw "$@"
+EOF
+chmod +x $PREFIX/bin/openclaw-local
 
 # ==========================================
-# 9. OpenClaw Skill: Android System Control (rish)
+# 8. AI Brain: Phone Control & Memory Injection
 # ==========================================
-echo "Injecting Android System Control skill into OpenClaw..."
-cat << 'EOF' > $HOME/.openclaw/skills/android_system.md
-# Android System Control
+echo "Injecting AI phone control scripts and memory files..."
 
-This skill allows the AI to control Android system settings and perform actions using the rish shell bridge.
+# Unified phone control script (rish -> adb -> su fallback chain)
+cat > $HOME/phone_control.sh << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+CMD="$1"
+shift
 
-## Tools
+run_cmd() {
+  if command -v rish &>/dev/null; then
+    rish -c "$@"
+  elif command -v adb &>/dev/null && adb get-state 1>/dev/null 2>&1; then
+    adb shell "$@"
+  elif command -v su &>/dev/null; then
+    su -c "$@"
+  else
+    echo "❌ Error: No control method available. Please start Shizuku first."
+    exit 1
+  fi
+}
 
-### execute_android_command
-Executes a bash command on the Android system.
+case "$CMD" in
+  screenshot)
+    run_cmd "screencap -p '${1:-/sdcard/screenshot.png}'"
+    ;;
+  open-app)
+    run_cmd "monkey -p $1 -c android.intent.category.LAUNCHER 1" 2>/dev/null
+    ;;
+  youtube-search)
+    QUERY=$(echo "$*" | sed 's/ /+/g')
+    run_cmd "am start -a android.intent.action.VIEW -d 'https://www.youtube.com/results?search_query=$QUERY' com.google.android.youtube"
+    ;;
+  open-url)
+    run_cmd "am start -a android.intent.action.VIEW -d '$1'"
+    ;;
+  wifi)
+    if [ "$1" = "on" ]; then run_cmd "svc wifi enable"; else run_cmd "svc wifi disable"; fi
+    ;;
+  battery)
+    run_cmd "dumpsys battery" | grep "level"
+    ;;
+  tap)
+    run_cmd "input tap $1 $2"
+    ;;
+  swipe)
+    run_cmd "input swipe $1 $2 $3 $4 ${5:-500}"
+    ;;
+  text)
+    run_cmd "input text '$*'"
+    ;;
+  key)
+    run_cmd "input keyevent $1"
+    ;;
+  home)       run_cmd "input keyevent 3" ;;
+  back)       run_cmd "input keyevent 4" ;;
+  recent)     run_cmd "input keyevent 187" ;;
+  power)      run_cmd "input keyevent 26" ;;
+  volume-up)  run_cmd "input keyevent 24" ;;
+  volume-down) run_cmd "input keyevent 25" ;;
+  screenon)   run_cmd "input keyevent 224" ;;
+  ui-dump)
+    run_cmd "uiautomator dump /sdcard/window_dump.xml >/dev/null 2>&1"
+    node -e "
+      const fs = require('fs');
+      try {
+        const xml = fs.readFileSync('/sdcard/window_dump.xml', 'utf8');
+        const regex = /(?:text|content-desc)=\\\"([^\\\"]+)\\\"[^>]*bounds=\\\"(\\[[0-9]+,[0-9]+\\]\\[[0-9]+,[0-9]+\\])\\\"/g;
+        let match;
+        while ((match = regex.exec(xml)) !== null) {
+          if (match[1].trim() !== '') console.log(match[2] + ' ' + match[1]);
+        }
+      } catch(e) { console.log('Error reading UI dump'); }
+    "
+    ;;
+  shell)
+    run_cmd "$*"
+    ;;
+  *)
+    echo "Usage: bash phone_control.sh [battery|wifi|open-url|open-app|youtube-search|screenshot|tap|swipe|text|key|home|back|recent|power|volume-up|volume-down|screenon|ui-dump|shell]"
+    ;;
+esac
+EOF
+chmod +x $HOME/phone_control.sh
 
-- command (string): The shell command to execute (e.g., 'svc wifi disable' or 'input keyevent 3').
+# AI Memory & Behavior Configuration
+mkdir -p $HOME/.openclaw/workspace 2>/dev/null || true
 
-## Execution
-Run: `bash /data/data/com.termux/files/usr/bin/rish -c "<command>"`
+cat > $HOME/.openclaw/workspace/IDENTITY.md << 'EOF'
+- **Name:** PhoneBot
+I am an Autonomous AI Agent running natively on an Android phone via Termux + Shizuku.
+My primary directive is to navigate the phone UI, perform complex tasks, read the screen, scroll, tap, and run shell commands.
+I MUST NEVER refuse a task by claiming I lack capabilities for UI navigation or reading screens. I strictly possess these capabilities via my bash tools.
+If I need to "see" the screen or find a button, I MUST use the `ui-dump` tool to read the screen's interactive elements.
 EOF
 
-# Pre-seeding OpenClaw configuration for local LLM
-cat << EOF > $HOME/.openclaw/config.yml
-gateway:
-  host: 0.0.0.0
-  port: 3000
-  enabled: true
+cat > $HOME/.openclaw/workspace/TOOLS.md << 'EOF'
+# TOOLS.md
+I have full control over this Android phone using `~/phone_control.sh`.
 
-providers:
-  local-llm:
-    type: openai
-    baseUrl: http://127.0.0.1:8080/v1
-    apiKey: local-bypass
+CRITICAL RULES:
+1. NEVER say "I cannot navigate UIs" or "I cannot read UIs". YOU CAN.
+2. To read the screen or find buttons, ALWAYS run `bash ~/phone_control.sh ui-dump` first.
+   Output format: `[x1,y1][x2,y2] ElementText`
+3. Read the output, find your target, calculate the center X/Y of its bounds, then tap it.
 
-agents:
-  phone-assistant:
-    provider: local-llm
-    model: local-model
-    skills:
-      - android_system
+Available Commands:
+- `bash ~/phone_control.sh ui-dump`              - Read the screen. ALWAYS use this to find elements.
+- `bash ~/phone_control.sh tap X Y`              - Tap screen at X/Y coordinates.
+- `bash ~/phone_control.sh swipe X1 Y1 X2 Y2`   - Swipe (scroll down: swipe 500 1500 500 500).
+- `bash ~/phone_control.sh text "string"`        - Type text into a focused field.
+- `bash ~/phone_control.sh key KEYCODE`          - Send keycode (66=Enter, 4=Back, 3=Home).
+- `bash ~/phone_control.sh open-app PKG_NAME`    - Launch an app by package name.
+- `bash ~/phone_control.sh shell "COMMAND"`      - Run ANY arbitrary shell command.
+- `bash ~/phone_control.sh screenshot /sdcard/s.png` - Take a screenshot.
+
+EXAMPLE WORKFLOW (Settings -> Dark Mode):
+1. `bash ~/phone_control.sh open-app com.android.settings`
+2. `bash ~/phone_control.sh ui-dump`
+3. Spot `[100,500][400,600] Display` -> center is (250, 550)
+4. `bash ~/phone_control.sh tap 250 550`
+5. `bash ~/phone_control.sh ui-dump` -> repeat until the task is done!
+EOF
+
+cat > $HOME/.openclaw/workspace/AGENTS.md << 'EOF'
+I execute terminal commands directly and parse their output.
+I am an autonomous agent. I must chain tool executions until the user's ultimate goal is fully achieved.
+
+CRITICAL: DO NOT STOP AFTER ONE TOOL CALL!
+Small models tend to open an app and immediately say "I opened it, please do the rest yourself." YOU MUST NOT DO THIS.
+
+You must loop your tool calls continuously:
+1. Call exec -> open app
+2. WAIT FOR RESULT (Do not write a message to the user yet!)
+3. Call exec -> ui-dump
+4. WAIT FOR RESULT -> Parse the element list
+5. Call exec -> tap X Y on the target element
+6. Repeat steps 3-5 until the requested task is FULLY COMPLETE.
+
+ONLY write a message to the user when the final goal is 100% achieved.
 EOF
 
 # ==========================================
-# 10. Start-Sequence Architecting
+# 9. Start-Sequence Architecting
 # ==========================================
+# Resolve GPU layer flag for start script (baked in at install time)
+if [ "$USE_GPU" = true ]; then
+    GPU_LAYERS_FLAG="-ngl 99"
+else
+    GPU_LAYERS_FLAG=""
+fi
+
 echo "Finalizing standard execution architecture..."
 cat << EOF > $HOME/start-overlayd.sh
 #!/data/data/com.termux/files/usr/bin/bash
 echo "Initiating Overlayd-AI Systems..."
+
+# Keep Termux alive in the background (prevents Android from killing processes)
+termux-wake-lock
+
+# Runtime environment: Node.js IPv4 DNS fix + local LLM endpoint
+export NODE_OPTIONS=--dns-result-order=ipv4first
+export OPENAI_BASE_URL="http://127.0.0.1:8080/v1"
+export OPENAI_API_KEY="local-bypass"
+export OPENAI_MODEL="local-model"
+
+# ── GPU Runtime Setup ────────────────────────────────────────────────────────
+if [ -n "${GPU_LAYERS_FLAG}" ]; then
+    echo "Setting up Vulkan GPU backend (Turnip / Adreno)..."
+
+    # Turnip ICD path
+    export VK_ICD_FILENAMES=${PREFIX}/share/vulkan/icd.d/freedreno_icd.aarch64.json
+    export TU_DEBUG=noconform
+
+    # Start virgl_test_server in Zink mode (bridges OpenGL -> Vulkan -> Turnip)
+    # Required for any GPU-accelerated display rendering.
+    killall virgl_test_server 2>/dev/null || true
+    MESA_NO_ERROR=1 \\
+    MESA_GL_VERSION_OVERRIDE=4.3COMPAT \\
+    MESA_GLES_VERSION_OVERRIDE=3.2 \\
+    GALLIUM_DRIVER=zink \\
+    ZINK_DESCRIPTORS=lazy \\
+    virgl_test_server --use-egl-surfaceless --use-gles > /dev/null 2>&1 &
+    sleep 2
+    echo "✅ GPU backend ready."
+fi
+# ─────────────────────────────────────────────────────────────────────────────
+
 cd ~/llama.cpp
 
-# Start LLM Engine with external access (0.0.0.0)
-# Intelligent Vision Detection: Added for Gemma-4/Qwen-VL compatibility
+# Intelligent Vision Detection: Gemma-4/Qwen-VL compatibility
 if [ -n "$VISION_FILE" ] && [ -f "models/${VISION_FILE}" ]; then
     echo "========================================================"
     echo "🎥 MULTIMODAL MODE ACTIVATED: Loading ${VISION_FILE}"
     echo "========================================================"
-    ./build/bin/llama-server --host 0.0.0.0 -m models/${PRIMARY_FILE} --mmproj models/${VISION_FILE} -t 4 -c 4096 --port 8080 > ~/overlayd_server.log 2>&1 &
+    ./build/bin/llama-server --host 0.0.0.0 -m models/${PRIMARY_FILE} --mmproj models/${VISION_FILE} ${GPU_LAYERS_FLAG} -t 4 -c 4096 --port 8080 > ~/overlayd_server.log 2>&1 &
 else
     echo "========================================================"
     echo "📝 TEXT-ONLY MODE: No vision module detected."
     echo "========================================================"
-    ./build/bin/llama-server --host 0.0.0.0 -m models/${PRIMARY_FILE} -t 4 -c 2048 --port 8080 > ~/overlayd_server.log 2>&1 &
+    ./build/bin/llama-server --host 0.0.0.0 -m models/${PRIMARY_FILE} ${GPU_LAYERS_FLAG} -t 4 -c 2048 --port 8080 > ~/overlayd_server.log 2>&1 &
 fi
 
 OVERLAYD_PID=\$!
@@ -339,20 +636,23 @@ OVERLAYD_PID=\$!
 echo "Allocating inference model into system memory (15s)..."
 sleep 15
 
-echo "Starting OpenClaw Gateway..."
+echo "Starting OpenClaw Gateway via local inference bridge..."
 cd ~
-openclaw start > ~/openclaw.log 2>&1 &
+openclaw-local start > ~/openclaw.log 2>&1 &
 CLAW_PID=\$!
 
-echo "System active. Access Web UI at http://127.0.0.1:3000 (Local) or http://PHONE_IP:3000 (Network)"
-echo "To configure Discord/others, run: openclaw onboard"
+echo ""
+echo "✅ System active."
+echo "   Web UI (local):   http://127.0.0.1:3000"
+echo "   Web UI (network): http://PHONE_IP:3000"
+echo "   To configure:     openclaw onboard"
+echo ""
 
 wait \$OVERLAYD_PID \$CLAW_PID
 EOF
 chmod +x $HOME/start-overlayd.sh
 
 echo ""
-# Final validation of environment variables
 source ~/.bashrc 2>/dev/null
 
 echo "Installation structure successfully resolved."
@@ -361,4 +661,3 @@ echo "bash ~/start-overlayd.sh"
 echo "Note: The OpenClaw execution environment can be triggered manually via 'openclaw onboard'."
 echo ""
 echo "System deployment finished."
-echo "If you found this setup useful, please consider subscribing to 'orailnoor' on YouTube!"
