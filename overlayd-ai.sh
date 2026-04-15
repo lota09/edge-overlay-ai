@@ -635,7 +635,7 @@ fi
 
 cd ~/llama.cpp
 
-# Intelligent Vision Detection: Gemma-4/Qwen-VL compatibility
+# Intelligent Vision Detection
 if [ -n "$VISION_FILE" ] && [ -f "models/${VISION_FILE}" ]; then
     echo "========================================================"
     echo "🎥 MULTIMODAL MODE ACTIVATED: Loading ${VISION_FILE}"
