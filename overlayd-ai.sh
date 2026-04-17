@@ -78,7 +78,7 @@ fi
 echo ""
 echo "Checking essential tools..."
 MISSING_TOOLS=""
-for cmd in clang cmake node python wget git make; do
+for cmd in clang cmake node python wget git make bison flex; do
     if ! command -v "$cmd" > /dev/null 2>&1; then
         MISSING_TOOLS="$MISSING_TOOLS $cmd"
     fi
@@ -89,7 +89,7 @@ if [ -n "$MISSING_TOOLS" ]; then
     pkg update -y -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef" </dev/null 2>&1 || {
         echo "⚠️  pkg update had warnings (continuing...)"
     }
-    pkg install -y clang cmake nodejs python wget git libandroid-spawn make </dev/null 2>&1 || {
+    pkg install -y clang cmake nodejs python wget git libandroid-spawn make bison flex </dev/null 2>&1 || {
         echo "⚠️  Some packages may have failed to install (continuing...)"
     }
 
@@ -138,7 +138,7 @@ if [ "$USE_GPU" = true ]; then
     pkg update -y -o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef" </dev/null 2>&1 || true
 
     # virgl renderer + Mesa Zink (OpenGL over Vulkan bridge)
-    pkg install -y mesa-zink virglrenderer-mesa-zink vulkan-loader-android virglrenderer-android vulkan-headers vulkan-tools </dev/null 2>&1 || {
+    pkg install -y mesa-zink virglrenderer-mesa-zink virglrenderer-android vulkan-headers vulkan-tools spirv-headers spirv-tools </dev/null 2>&1 || {
         echo "⚠️  Some GPU packages may have failed (continuing...)"
     }
 
@@ -338,6 +338,10 @@ if [ "$BUILD_NEEDED" = true ]; then
                 git clone --recursive https://github.com/google/shaderc
             fi
             cd shaderc
+            echo "Syncing third-party dependencies for shaderc..."
+            ./utils/git-sync-deps
+            
+            rm -rf build  # Ensure clean build
             mkdir -p build
             cd build
             cmake .. -G Ninja \
