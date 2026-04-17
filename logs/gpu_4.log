@@ -1,0 +1,328 @@
+~ $ ./run_llama_server.sh 
+========================================================
+🚀 Termux Vulkan (Adreno/Turnip) LLM Server Runner
+========================================================
+Available model directories under 'models':
+1) models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive       3) models/templates
+2) models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive_noVL
+Select a directory: 1
+Auto-detected main model: models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf
+Auto-detected vision projection: models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive/mmproj-Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-f16.gguf
+
+⚠️ Adreno GPUs can crash with '-ngl 99' on large models.
+Enter GPU offload layers (-ngl) [Default: 20]: 99
+Enter Context Size (-c) [Default: 2048]: 
+
+Setting up Vulkan Environment...
+========================================================
+Starting Llama.cpp Server...
+Command: ./build/bin/llama-server --host 0.0.0.0 --port 8080 -m models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf -ngl 99 -c 2048 -t 4 --mmproj models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive/mmproj-Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-f16.gguf
+(To stop the server, press Ctrl+C)
+========================================================
+main: n_parallel is set to auto, using n_parallel = 4 and kv_unified = true
+build_info: b8797-5d14e5d19
+system_info: n_threads = 4 (n_threads_batch = 4) / 8 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 |
+Running without SSL
+init: using 8 threads for HTTP server
+start: binding port with default address family
+main: loading model
+srv    load_model: loading model 'models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf'
+common_init_result: fitting params to device memory, for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on
+llama_params_fit_impl: projected to use 2608 MiB of device memory vs. 5994 MiB of free device memory
+llama_params_fit_impl: will leave 3386 >= 1024 MiB of free device memory, no changes needed
+llama_params_fit: successfully fit params to free device memory
+llama_params_fit: fitting params to free memory took 1.51 seconds
+llama_model_load_from_file_impl: using device Vulkan0 (Turnip Adreno (TM) 650) (unknown id) - 6054 MiB free
+llama_model_loader: loaded meta data with 48 key-value pairs and 720 tensors from models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma4
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                     general.sampling.top_k i32              = 64
+llama_model_loader: - kv   3:                     general.sampling.top_p f32              = 0.950000
+llama_model_loader: - kv   4:                      general.sampling.temp f32              = 1.000000
+llama_model_loader: - kv   5:                               general.name str              = Gemma-4-E4B-Uncensored-HauhauCS-Aggre...
+llama_model_loader: - kv   6:                           general.finetune str              = 5Ref
+llama_model_loader: - kv   7:                           general.basename str              = KL0.0378
+llama_model_loader: - kv   8:                         general.size_label str              = 7.5B
+llama_model_loader: - kv   9:                         gemma4.block_count u32              = 42
+llama_model_loader: - kv  10:                      gemma4.context_length u32              = 131072
+llama_model_loader: - kv  11:                    gemma4.embedding_length u32              = 2560
+llama_model_loader: - kv  12:                 gemma4.feed_forward_length u32              = 10240
+llama_model_loader: - kv  13:                gemma4.attention.head_count u32              = 8
+llama_model_loader: - kv  14:             gemma4.attention.head_count_kv u32              = 2
+llama_model_loader: - kv  15:                      gemma4.rope.freq_base f32              = 1000000.000000
+llama_model_loader: - kv  16:                  gemma4.rope.freq_base_swa f32              = 10000.000000
+llama_model_loader: - kv  17:    gemma4.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  18:                gemma4.attention.key_length u32              = 512
+llama_model_loader: - kv  19:              gemma4.attention.value_length u32              = 512
+llama_model_loader: - kv  20:             gemma4.final_logit_softcapping f32              = 30.000000
+llama_model_loader: - kv  21:            gemma4.attention.sliding_window u32              = 512
+llama_model_loader: - kv  22:          gemma4.attention.shared_kv_layers u32              = 18
+llama_model_loader: - kv  23:    gemma4.embedding_length_per_layer_input u32              = 256
+llama_model_loader: - kv  24:    gemma4.attention.sliding_window_pattern arr[bool,42]     = [true, true, true, true, true, false,...
+llama_model_loader: - kv  25:            gemma4.attention.key_length_swa u32              = 256
+llama_model_loader: - kv  26:          gemma4.attention.value_length_swa u32              = 256
+llama_model_loader: - kv  27:                gemma4.rope.dimension_count u32              = 512
+llama_model_loader: - kv  28:            gemma4.rope.dimension_count_swa u32              = 256
+llama_model_loader: - kv  29:                       tokenizer.ggml.model str              = gemma4
+llama_model_loader: - kv  30:                      tokenizer.ggml.tokens arr[str,262144]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  31:                      tokenizer.ggml.scores arr[f32,262144]  = [-1000.000000, -1000.000000, -1000.00...
+llama_model_loader: - kv  32:                  tokenizer.ggml.token_type arr[i32,262144]  = [3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  33:                      tokenizer.ggml.merges arr[str,514906]  = ["\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n \n", ...
+llama_model_loader: - kv  34:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  35:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  36:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  37:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  38:               tokenizer.ggml.mask_token_id u32              = 4
+llama_model_loader: - kv  39:                    tokenizer.chat_template str              = {%- macro format_parameters(propertie...
+llama_model_loader: - kv  40:            tokenizer.ggml.add_space_prefix bool             = false
+llama_model_loader: - kv  41:               tokenizer.ggml.add_bos_token bool             = false
+llama_model_loader: - kv  42:               general.quantization_version u32              = 2
+llama_model_loader: - kv  43:                          general.file_type u32              = 15
+llama_model_loader: - kv  44:                      quantize.imatrix.file str              = /media/hauhaucs/New Volume/LM Models/...
+llama_model_loader: - kv  45:                   quantize.imatrix.dataset str              = /home/hauhaucs/llama.cpp/groups_merge...
+llama_model_loader: - kv  46:             quantize.imatrix.entries_count u32              = 342
+llama_model_loader: - kv  47:              quantize.imatrix.chunks_count u32              = 93
+llama_model_loader: - type  f32:  339 tensors
+llama_model_loader: - type q4_K:  254 tensors
+llama_model_loader: - type q6_K:  126 tensors
+llama_model_loader: - type bf16:    1 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = Q4_K - Medium
+print_info: file size   = 4.99 GiB (5.70 BPW)
+load: override 'tokenizer.ggml.add_bos_token' to 'true' for Gemma4
+load: 0 unused tokens
+load: control-looking token:     50 '<|tool_response>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: control-looking token:    212 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: printing all EOG tokens:
+load:   - 1 ('<eos>')
+load:   - 50 ('<|tool_response>')
+load:   - 106 ('<turn|>')
+load:   - 212 ('</s>')
+load: special_eog_ids contains '<|tool_response>', removing '</s>' token from EOG list
+load: special tokens cache size = 24
+load: token to piece cache size = 1.9445 MB
+print_info: arch                  = gemma4
+print_info: vocab_only            = 0
+print_info: no_alloc              = 0
+print_info: n_ctx_train           = 131072
+print_info: n_embd                = 2560
+print_info: n_embd_inp            = 2560
+print_info: n_layer               = 42
+print_info: n_head                = 8
+print_info: n_head_kv             = 2
+print_info: n_rot                 = 512
+print_info: n_swa                 = 512
+print_info: is_swa_any            = 1
+print_info: n_embd_head_k         = 512
+print_info: n_embd_head_v         = 512
+print_info: n_gqa                 = 4
+print_info: n_embd_k_gqa          = [512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024]
+print_info: n_embd_v_gqa          = [512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024, 512, 512, 512, 512, 512, 1024]
+print_info: f_norm_eps            = 0.0e+00
+print_info: f_norm_rms_eps        = 1.0e-06
+print_info: f_clamp_kqv           = 0.0e+00
+print_info: f_max_alibi_bias      = 0.0e+00
+print_info: f_logit_scale         = 0.0e+00
+print_info: f_attn_scale          = 1.0e+00
+print_info: n_ff                  = 10240
+print_info: n_expert              = 0
+print_info: n_expert_used         = 0
+print_info: n_expert_groups       = 0
+print_info: n_group_used          = 0
+print_info: causal attn           = 1
+print_info: pooling type          = -1
+print_info: rope type             = 2
+print_info: rope scaling          = linear
+print_info: freq_base_train       = 1000000.0
+print_info: freq_scale_train      = 1
+print_info: freq_base_swa         = 10000.0
+print_info: freq_scale_swa        = 1
+print_info: n_embd_head_k_swa     = 256
+print_info: n_embd_head_v_swa     = 256
+print_info: n_rot_swa             = 256
+print_info: n_ctx_orig_yarn       = 131072
+print_info: rope_yarn_log_mul     = 0.0000
+print_info: rope_finetuned        = unknown
+print_info: model type            = E4B
+print_info: model params          = 7.52 B
+print_info: general.name          = Gemma-4-E4B-Uncensored-HauhauCS-Aggressive
+print_info: vocab type            = BPE
+print_info: n_vocab               = 262144
+print_info: n_merges              = 514906
+print_info: BOS token             = 2 '<bos>'
+print_info: EOS token             = 1 '<eos>'
+print_info: UNK token             = 3 '<unk>'
+print_info: PAD token             = 0 '<pad>'
+print_info: MASK token            = 4 '<mask>'
+print_info: LF token              = 107 '
+'
+print_info: EOG token             = 1 '<eos>'
+print_info: EOG token             = 50 '<|tool_response>'
+print_info: EOG token             = 106 '<turn|>'
+print_info: max token length      = 93
+load_tensors: loading model tensors, this can take a while... (mmap = true, direct_io = false)
+load_tensors: offloading output layer to GPU
+load_tensors: offloading 41 repeating layers to GPU
+load_tensors: offloaded 43/43 layers to GPU
+load_tensors:   CPU_Mapped model buffer size =  2730.00 MiB
+load_tensors:   CPU_REPACK model buffer size =   525.00 MiB
+load_tensors:      Vulkan0 model buffer size =  2375.42 MiB
+..............................................
+common_init_result: added <eos> logit bias = -inf
+common_init_result: added <|tool_response> logit bias = -inf
+common_init_result: added <turn|> logit bias = -inf
+llama_context: constructing llama_context
+llama_context: n_seq_max     = 4
+llama_context: n_ctx         = 2048
+llama_context: n_ctx_seq     = 2048
+llama_context: n_batch       = 2048
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = true
+llama_context: freq_base     = 1000000.0
+llama_context: freq_scale    = 1
+llama_context: n_ctx_seq (2048) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+llama_context: Vulkan_Host  output buffer size =     4.00 MiB
+llama_kv_cache_iswa: creating non-SWA KV cache, size = 2048 cells
+llama_kv_cache:    Vulkan0 KV buffer size =    32.00 MiB
+llama_kv_cache: size =   32.00 MiB (  2048 cells,   4 layers,  4/1 seqs), K (f16):   16.00 MiB, V (f16):   16.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 512
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 512
+llama_kv_cache_iswa: creating     SWA KV cache, size = 2048 cells
+llama_kv_cache:    Vulkan0 KV buffer size =    80.00 MiB
+llama_kv_cache: size =   80.00 MiB (  2048 cells,  20 layers,  4/1 seqs), K (f16):   40.00 MiB, V (f16):   40.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 256
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 256
+sched_reserve: reserving ...
+sched_reserve: Flash Attention was auto, set to enabled
+sched_reserve: resolving fused Gated Delta Net support:
+sched_reserve: fused Gated Delta Net (autoregressive) enabled
+sched_reserve: fused Gated Delta Net (chunked) enabled
+sched_reserve:    Vulkan0 compute buffer size =   121.02 MiB
+sched_reserve: Vulkan_Host compute buffer size =   522.00 MiB
+sched_reserve: graph nodes  = 1867
+sched_reserve: graph splits = 3
+sched_reserve: reserve took 358.07 ms, sched copies = 1
+common_init_from_params: warming up the model with an empty run - please wait ... (--no-warmup to disable)
+clip_model_loader: model name:   KL0.0378 5Ref
+clip_model_loader: description:
+clip_model_loader: GGUF version: 3
+clip_model_loader: alignment:    32
+clip_model_loader: n_tensors:    483
+clip_model_loader: n_kv:         32
+
+clip_model_loader: has vision encoder
+clip_model_loader: has audio encoder
+clip_ctx: CLIP using Vulkan0 backend
+load_hparams: projector:          gemma4v
+load_hparams: n_embd:             768
+load_hparams: n_head:             12
+load_hparams: n_ff:               3072
+load_hparams: n_layer:            16
+load_hparams: ffn_op:             gelu_quick
+load_hparams: projection_dim:     2560
+
+--- vision hparams ---
+load_hparams: image_size:         224
+load_hparams: patch_size:         16
+load_hparams: has_llava_proj:     0
+load_hparams: minicpmv_version:   0
+load_hparams: n_merge:            3
+load_hparams: n_wa_pattern: 0
+load_hparams: image_min_pixels:   580608
+load_hparams: image_max_pixels:   645120
+
+load_hparams: model size:         944.38 MiB
+load_hparams: metadata size:      0.17 MiB
+warmup: warmup with image size = 768 x 768
+alloc_compute_meta:    Vulkan0 compute buffer size =   101.27 MiB
+alloc_compute_meta:        CPU compute buffer size =     6.77 MiB
+alloc_compute_meta: graph splits = 1, nodes = 940
+warmup: flash attention is enabled
+clip_ctx: CLIP using Vulkan0 backend
+load_hparams: projector:          gemma4a
+load_hparams: n_embd:             1024
+load_hparams: n_head:             8
+load_hparams: n_ff:               4096
+load_hparams: n_layer:            12
+load_hparams: ffn_op:             gelu_quick
+load_hparams: projection_dim:     2560
+
+--- audio hparams ---
+load_hparams: n_mel_bins:         128
+load_hparams: proj_stack_factor:  0
+load_hparams: audio_chunk_len:    0
+load_hparams: audio_sample_rate:  16000
+load_hparams: audio_n_fft:        512
+load_hparams: audio_window_len:   320
+load_hparams: audio_hop_len:      160
+
+load_hparams: model size:         944.38 MiB
+load_hparams: metadata size:      0.17 MiB
+ggml_vulkan: Device memory allocation of size 621216896 failed.
+ggml_vulkan: vk::Device::allocateMemory: ErrorOutOfDeviceMemory
+/data/data/com.termux/files/home/llama.cpp/ggml/src/ggml-backend.cpp:179: GGML_ASSERT(buffer) failed
+alloc_tensor_range: failed to allocate Vulkan0 buffer of size 621216896
+0: 0x7849c8c8a0 
+1: 0x7849c8c860 ggml_print_backtrace
+2: 0x7849c9fdc0 ggml_abort
+3: 0x7849ca2d8c ggml_backend_buffer_is_multi_buffer
+4: 0x78455557ec _ZN17clip_model_loader12load_tensorsER8clip_ctx
+5: 0x7845544adc _Z9clip_initPKc19clip_context_params
+6: 0x78454ecc34 _ZN12mtmd_contextC2EPKcPK11llama_modelRK19mtmd_context_params
+7: 0x78454eac90 mtmd_init_from_file
+8: 0x5a68681688
+9: 0x5a685f0bc0
+10: 0x783d273934 __libc_init
+./run_llama_server.sh: line 90: 27912 Aborted                    ./build/bin/llama-server "${ARGS[@]}"
+~ $ ./run_llama_server.sh 
+========================================================
+🚀 Termux Vulkan (Adreno/Turnip) LLM Server Runner
+========================================================
+Available model directories under 'models':
+1) models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive       3) models/templates
+2) models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive_noVL
+Select a directory: 1
+Auto-detected main model: models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf
+Auto-detected vision projection: models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive/mmproj-Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-f16.gguf
+
+⚠️ Adreno GPUs can crash with '-ngl 99' on large models.
+Enter GPU offload layers (-ngl) [Default: 20]:
+Enter Context Size (-c) [Default: 2048]: 
+
+Setting up Vulkan Environment...
+========================================================
+Starting Llama.cpp Server...
+Command: ./build/bin/llama-server --host 0.0.0.0 --port 8080 -m models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf -ngl 20 -c 2048 -t 4 --mmproj models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive/mmproj-Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-f16.gguf
+(To stop the server, press Ctrl+C)
+========================================================
+main: n_parallel is set to auto, using n_parallel = 4 and kv_unified = true
+build_info: b8797-5d14e5d19
+system_info: n_threads = 4 (n_threads_batch = 4) / 8 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 |
+Running without SSL
+init: using 8 threads for HTTP server
+start: binding port with default address family
+main: loading model
+srv    load_model: loading model 'models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf'
+common_init_result: fitting params to device memory, for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on
+/data/data/com.termux/files/home/llama.cpp/ggml/src/ggml-backend.cpp:1365: GGML_ASSERT(n_inputs < GGML_SCHED_MAX_SPLIT_INPUTS) failed
+0: 0x75fe2c28a0 
+1: 0x75fe2c2860 ggml_print_backtrace
+2: 0x75fe2d5dc0 ggml_abort
+3: 0x75fe2dc9ec ggml_backend_sched_split_graph
+4: 0x75fe4289f4 _ZN13llama_context13graph_reserveEjjjPK22llama_memory_context_ibPm
+5: 0x75fe427714 _ZN13llama_context13sched_reserveEv
+6: 0x75fe4267dc _ZN13llama_contextC2ERK11llama_model20llama_context_params
+7: 0x75fe42ee88 llama_init_from_model
+8: 0x75fe410510
+9: 0x75fe40bb8c
+10: 0x75fe40b9d8 llama_params_fit
+11: 0x5dc46536b4
+12: 0x5dc4654a64
+13: 0x5dc44f02f8
+14: 0x5dc445fbc0
+15: 0x760a063934 __libc_init
+./run_llama_server.sh: line 90: 28067 Aborted                    ./build/bin/llama-server "${ARGS[@]}"
+~ $

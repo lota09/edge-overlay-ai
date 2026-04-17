@@ -3,6 +3,10 @@ set -euo pipefail
 
 cd $HOME/llama.cpp || { echo "llama.cpp not found! Please build it first."; exit 1; }
 
+echo "Cleaning up any zombie server processes..."
+killall llama-server 2>/dev/null || true
+pkill -9 -f llama-server 2>/dev/null || true
+
 echo "========================================================"
 echo "🚀 Termux Vulkan (Adreno/Turnip) LLM Server Runner"
 echo "========================================================"
@@ -73,7 +77,7 @@ NGL=${NGL:-20}
 read -p "Enter Context Size (-c) [Default: 2048]: " CTX
 CTX=${CTX:-2048}
 
-ARGS=( --host 0.0.0.0 --port 8080 -m "$MODEL_PATH" -ngl "$NGL" -c "$CTX" -t 4 )
+ARGS=( --host 0.0.0.0 --port 8080 -m "$MODEL_PATH" -ngl "$NGL" -c "$CTX" -t 4)
 if [ -n "$PROJ_PATH" ]; then ARGS+=( --mmproj "$PROJ_PATH" ); fi
 
 echo ""
