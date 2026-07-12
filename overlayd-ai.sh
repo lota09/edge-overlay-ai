@@ -12,6 +12,88 @@
 # Errors are handled explicitly where they matter.
 
 # ==========================================
+# Native-binary linkage guard
+# ==========================================
+# Termux ships prebuilt ARM64 binaries (cmake, ninja, clang, ...) that are
+# dynamically linked against Termux's own libc/libexpat/etc. `command -v`
+# only checks that a file exists and is +x — it does NOT catch the very
+# common Android/Termux failure mode where the binary is present but the
+# dynamic linker can't resolve a dependency, e.g.:
+#
+#   CANNOT LINK EXECUTABLE "cmake": library "libexpat.so.1" not found:
+#   needed by main executable
+#
+# This happens even when `pkg`/`dpkg` insist the library is installed:
+#   1. A partial/interrupted `pkg upgrade` leaves version-skewed packages
+#      (cmake rebuilt against a newer libexpat than what's on disk).
+#   2. The .so file exists on disk but is unreadable in THIS session even
+#      though `stat` on the concrete filename looks completely normal —
+#      seen when Termux is reached over SSH / a chroot layer whose
+#      SELinux or UID context differs from a plain foreground Termux
+#      session (readlink() on the versioned symlink gets EACCES while a
+#      direct stat of the target file still succeeds).
+#
+# ensure_native_binary_works <command> [package-name]
+#   Actually *executes* the binary (not just checks its existence),
+#   attempts a bounded self-heal via reinstall on failure, and — if that
+#   doesn't fix it — fails loudly with a clear diagnosis instead of
+#   silently ploughing into a 15-30 minute build that's doomed to fail.
+# ==========================================
+ensure_native_binary_works() {
+    local bin="$1"
+    local pkg="${2:-$1}"
+    local out attempt=1
+
+    if ! command -v "$bin" > /dev/null 2>&1; then
+        echo "Installing $pkg (provides $bin)..."
+        pkg install -y "$pkg" </dev/null 2>&1 || true
+    fi
+
+    for attempt in 1 2 3; do
+        # NOTE: the version check must live inside the `if` condition itself
+        # (not `out=$(...)` followed by a separate `[ $? -eq 0 ]`) — under
+        # `set -e` a failing command substitution on its own line aborts the
+        # whole script before we ever get to inspect the exit status.
+        if out=$("$bin" --version 2>&1); then
+            [ "$attempt" -gt 1 ] && echo "✅ $bin recovered after reinstalling $pkg."
+            return 0
+        fi
+
+        if ! printf '%s\n' "$out" | grep -q "CANNOT LINK EXECUTABLE"; then
+            echo "❌ '$bin --version' failed unexpectedly:"
+            printf '%s\n' "$out" | sed 's/^/    /'
+            return 1
+        fi
+
+        local missing_lib
+        missing_lib=$(printf '%s\n' "$out" | sed -n 's/.*library "\([^"]*\)".*/\1/p')
+        echo "⚠️  '$bin' can't dynamically link (attempt $attempt/3) — missing: ${missing_lib:-unknown}"
+        echo "    Repairing package '$pkg'..."
+
+        pkg update -y </dev/null >/dev/null 2>&1 || true
+        apt install --reinstall -y "$pkg" </dev/null 2>&1 || true
+    done
+
+    echo ""
+    echo "========================================================"
+    echo "❌ '$bin' still cannot run after $attempt repair attempts."
+    echo "========================================================"
+    echo "This is usually NOT a missing package — apt/pkg reports the"
+    echo "dependency as installed, but this process can't actually use it."
+    echo "Known causes on Android/Termux:"
+    echo "  • Running via SSH into a chroot / dual-app / second-space layer"
+    echo "    whose SELinux or UID mapping differs from a plain foreground"
+    echo "    Termux session — try running this script directly inside the"
+    echo "    Termux app on-device instead of over SSH."
+    echo "  • A background/foreground SELinux domain difference — fully"
+    echo "    close and reopen the Termux app, then reconnect and retry."
+    echo "  • Corrupted package cache — try:"
+    echo "      pkg clean && rm -rf \$PREFIX/var/lib/apt/lists/* && pkg update -y"
+    echo "========================================================"
+    return 1
+}
+
+# ==========================================
 # 1. Environment & Hardware Diagnostics
 # ==========================================
 echo "Initiating Overlayd-AI Framework Installation..."
@@ -96,6 +178,27 @@ if [ -n "$MISSING_TOOLS" ]; then
 else
     echo "✅ All essential tools present."
 fi
+
+# Verify each tool actually RUNS (not just that the file exists and is +x).
+# `command -v` can't catch Android's "CANNOT LINK EXECUTABLE" failure mode
+# — see ensure_native_binary_works() above for why this matters.
+BROKEN_TOOLS=""
+for cmd in clang cmake node python wget git make bison flex; do
+    pkg_for_cmd="$cmd"
+    [ "$cmd" = "node" ] && pkg_for_cmd="nodejs"
+    if ! ensure_native_binary_works "$cmd" "$pkg_for_cmd"; then
+        BROKEN_TOOLS="$BROKEN_TOOLS $cmd"
+    fi
+done
+
+if [ -n "$BROKEN_TOOLS" ]; then
+    echo ""
+    echo "❌ ERROR: These tools are broken and automatic repair didn't fix them:$BROKEN_TOOLS"
+    echo "   Resolve the issue diagnosed above and re-run this script."
+    echo "   Terminating now instead of wasting time on a doomed build."
+    exit 1
+fi
+echo "✅ All essential tools verified working."
 
 # ==========================================
 # GPU Acceleration Selection
@@ -300,8 +403,15 @@ fi
 
 if [ "$BUILD_NEEDED" = true ]; then
 
-    # Install build-specific dependencies
-    pkg install -y libexpat </dev/null 2>&1
+    # Install build-specific dependencies and verify the toolchain still
+    # links correctly — the GPU package installs above can shift shared
+    # library versions (e.g. cmake vs libexpat) even if the earlier check
+    # passed.
+    pkg install -y libexpat </dev/null 2>&1 || true
+    if ! ensure_native_binary_works cmake cmake; then
+        echo "❌ ERROR: cmake is broken and automatic repair failed. Aborting before build."
+        exit 1
+    fi
 
     # -------------------------------------------------------
     # Helper: CPU-only llama-server build.
@@ -340,20 +450,29 @@ if [ "$BUILD_NEEDED" = true ]; then
             cd shaderc
             echo "Syncing third-party dependencies for shaderc..."
             ./utils/git-sync-deps
-            
-            rm -rf build  # Ensure clean build
-            mkdir -p build
-            cd build
-            cmake .. -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DSHADERC_SKIP_TESTS=ON
-            if ninja glslc_exe; then
-                cp ~/shaderc/build/glslc/glslc $PREFIX/bin/glslc
-                echo "✅ glslc installed: $(glslc --version)"
-            else
-                echo "❌ glslc build failed."
+
+            # cmake/ninja can break between the earlier check and now —
+            # GPU package installs above touch shared libs. Re-verify
+            # before sinking 15-30 min into a build that's doomed to fail.
+            if ! ensure_native_binary_works cmake cmake || ! ensure_native_binary_works ninja ninja; then
+                echo "❌ glslc build aborted: cmake/ninja toolchain is broken (see diagnosis above)."
                 GPU_FAILED=true
                 USE_GPU=false
+            else
+                rm -rf build  # Ensure clean build
+                mkdir -p build
+                cd build
+                cmake .. -G Ninja \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -DSHADERC_SKIP_TESTS=ON
+                if ninja glslc_exe; then
+                    cp ~/shaderc/build/glslc/glslc $PREFIX/bin/glslc
+                    echo "✅ glslc installed: $(glslc --version)"
+                else
+                    echo "❌ glslc build failed."
+                    GPU_FAILED=true
+                    USE_GPU=false
+                fi
             fi
         else
             echo "✅ glslc already available: $(glslc --version)"
