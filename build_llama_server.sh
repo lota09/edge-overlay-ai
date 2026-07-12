@@ -39,13 +39,13 @@ ensure_native_binary_works() {
         pkg install -y "$pkg" </dev/null 2>&1 || true
     fi
 
-    for attempt in 1 2 3; do
+    for attempt in 1 2; do
         # NOTE: the version check must live inside the `if` condition itself
         # (not `out=$(...)` followed by a separate `[ $? -eq 0 ]`) — under
         # `set -e` a failing command substitution on its own line aborts the
         # whole script before we ever get to inspect the exit status.
         if out=$("$bin" --version 2>&1); then
-            [ "$attempt" -gt 1 ] && echo "✅ $bin recovered after reinstalling $pkg."
+            [ "$attempt" -gt 1 ] && echo "✅ $bin recovered after upgrading packages."
             return 0
         fi
 
@@ -57,26 +57,45 @@ ensure_native_binary_works() {
 
         local missing_lib
         missing_lib=$(printf '%s\n' "$out" | sed -n 's/.*library "\([^"]*\)".*/\1/p')
-        echo "⚠️  '$bin' can't dynamically link (attempt $attempt/3) — missing: ${missing_lib:-unknown}"
-        echo "    Repairing package '$pkg'..."
+        echo "⚠️  '$bin' can't dynamically link (attempt $attempt/2) — missing: ${missing_lib:-unknown}"
+        echo "    That missing library almost always belongs to a *different*,"
+        echo "    still-pending package (e.g. libxml2/libexpat/libicu), not '$pkg'"
+        echo "    itself — reinstalling only '$pkg' will NOT fix it. Running a"
+        echo "    full 'pkg upgrade' instead so the real dependency gets pulled in."
 
         pkg update -y </dev/null >/dev/null 2>&1 || true
+        local upgrade_out
+        upgrade_out=$(pkg upgrade -y </dev/null 2>&1) || true
+        printf '%s\n' "$upgrade_out" | tail -6
         apt install --reinstall -y "$pkg" </dev/null 2>&1 || true
+
+        if printf '%s\n' "$upgrade_out" | grep -qE "^0 upgraded, 0 newly installed"; then
+            echo "    (pkg upgrade made no changes — a second identical attempt won't help.)"
+            break
+        fi
     done
 
     echo ""
     echo "========================================================"
-    echo "❌ '$bin' still cannot run after $attempt repair attempts."
+    echo "❌ '$bin' still cannot run after $attempt repair attempt(s)."
     echo "========================================================"
     echo "This is usually NOT a missing package — apt/pkg reports the"
     echo "dependency as installed, but this process can't actually use it."
-    echo "Known causes on Android/Termux:"
+    echo "Most likely cause: a large batch of packages is still pending"
+    echo "upgrade (run 'apt list --upgradable' to see the count) and the"
+    echo "specific transitive library '$bin' needs (shown above) is one of"
+    echo "them. Fix manually with:"
+    echo "      pkg update -y && pkg upgrade -y"
+    echo "  (run it more than once if it reports new upgrades each time —"
+    echo "  large batches sometimes resolve in waves)."
+    echo ""
+    echo "If a full 'pkg upgrade -y' truly changes nothing and this still"
+    echo "fails, then it's likely session/environment-specific rather than"
+    echo "a package problem:"
     echo "  • Running via SSH into a chroot / dual-app / second-space layer"
     echo "    whose SELinux or UID mapping differs from a plain foreground"
     echo "    Termux session — try running this script directly inside the"
     echo "    Termux app on-device instead of over SSH."
-    echo "  • A background/foreground SELinux domain difference — fully"
-    echo "    close and reopen the Termux app, then reconnect and retry."
     echo "  • Corrupted package cache — try:"
     echo "      pkg clean && rm -rf \$PREFIX/var/lib/apt/lists/* && pkg update -y"
     echo "========================================================"
